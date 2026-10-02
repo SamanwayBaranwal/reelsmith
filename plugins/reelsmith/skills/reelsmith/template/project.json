@@ -1,0 +1,10 @@
+{
+  "title": "my reel",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "duration": 6,
+  "reference": null,
+  "audio": null,
+  "output": "out/video.mp4"
+}

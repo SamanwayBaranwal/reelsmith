@@ -1,0 +1,10 @@
+{
+  "name": "reelsmith",
+  "version": "0.1.0",
+  "description": "Paste a motion-graphics reel link, get it back as editable code: measures the reel, rebuilds every scene on a canvas engine, compares frame by frame until it matches, renders a 1080x1920 MP4 you can re-skin for any brand.",
+  "author": { "name": "SamanwayBaranwal", "url": "https://github.com/SamanwayBaranwal" },
+  "homepage": "https://github.com/SamanwayBaranwal/reelsmith",
+  "repository": "https://github.com/SamanwayBaranwal/reelsmith",
+  "license": "MIT",
+  "keywords": ["video", "motion-graphics", "motion-design", "reels", "instagram", "tiktok", "shorts", "canvas", "paper-cut", "kinetic-typography", "content-creation"]
+}

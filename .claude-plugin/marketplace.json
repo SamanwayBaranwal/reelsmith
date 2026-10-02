@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "reelsmith",
+  "description": "Rebuild any motion-graphics reel in code.",
+  "owner": { "name": "SamanwayBaranwal", "url": "https://github.com/SamanwayBaranwal" },
+  "plugins": [
+    {
+      "name": "reelsmith",
+      "description": "Paste a motion-graphics reel link (Instagram, TikTok, Shorts, X) and get it back as editable canvas code + a 1080x1920 MP4: measured, rebuilt scene by scene, compared frame by frame.",
+      "version": "0.1.0",
+      "source": "./plugins/reelsmith",
+      "category": "productivity",
+      "keywords": ["video", "motion-graphics", "reels", "content-creation"]
+    }
+  ]
+}
