@@ -1,0 +1,2 @@
+{ "title": "Build with Claude (1:1 rebuild)", "width": 1916, "height": 1080, "fps": 30, "duration": 12.9,
+  "reference": "ref/original.mp4", "audio": null, "output": "out/build_with_claude_1to1.mp4" }

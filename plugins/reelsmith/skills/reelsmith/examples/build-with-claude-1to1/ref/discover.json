@@ -1,0 +1,173 @@
+{
+ "video": "original.mp4",
+ "fps": 30.0,
+ "shots": [
+  {
+   "shot": 1,
+   "start": 0.0,
+   "end": 3.067,
+   "rest": 1.2,
+   "camera": false,
+   "objects": [
+    {
+     "box": [
+      687,
+      184,
+      603,
+      631
+     ],
+     "at": 1.2,
+     "activity": 109.8,
+     "text": false
+    }
+   ]
+  },
+  {
+   "shot": 2,
+   "start": 3.067,
+   "end": 3.633,
+   "rest": 3.6,
+   "camera": true,
+   "objects": []
+  },
+  {
+   "shot": 3,
+   "start": 3.633,
+   "end": 6.967,
+   "rest": 6.7,
+   "camera": true,
+   "objects": []
+  },
+  {
+   "shot": 4,
+   "start": 6.967,
+   "end": 9.2,
+   "rest": 8.167,
+   "camera": true,
+   "objects": []
+  },
+  {
+   "shot": 5,
+   "start": 9.2,
+   "end": 9.4,
+   "rest": 9.367,
+   "camera": false,
+   "objects": [
+    {
+     "box": [
+      267,
+      858,
+      990,
+      152
+     ],
+     "at": 9.367,
+     "activity": 84.7,
+     "text": false
+    },
+    {
+     "box": [
+      1253,
+      16,
+      56,
+      331
+     ],
+     "at": 9.367,
+     "activity": 59.1,
+     "text": false
+    }
+   ]
+  },
+  {
+   "shot": 6,
+   "start": 9.4,
+   "end": 10.833,
+   "rest": 10.467,
+   "camera": false,
+   "objects": [
+    {
+     "box": [
+      1305,
+      487,
+      419,
+      80
+     ],
+     "at": 10.467,
+     "activity": 36.2,
+     "text": true
+    },
+    {
+     "box": [
+      128,
+      475,
+      379,
+      76
+     ],
+     "at": 10.467,
+     "activity": 69.8,
+     "text": true
+    },
+    {
+     "box": [
+      563,
+      232,
+      962,
+      675
+     ],
+     "at": 10.467,
+     "activity": 56.0,
+     "text": false
+    }
+   ]
+  },
+  {
+   "shot": 7,
+   "start": 10.833,
+   "end": 11.3,
+   "rest": 11.267,
+   "camera": true,
+   "objects": []
+  },
+  {
+   "shot": 8,
+   "start": 11.3,
+   "end": 12.833,
+   "rest": 12.8,
+   "camera": false,
+   "objects": [
+    {
+     "box": [
+      0,
+      715,
+      1916,
+      363
+     ],
+     "at": 11.467,
+     "activity": 113.9,
+     "text": false
+    },
+    {
+     "box": [
+      523,
+      475,
+      918,
+      128
+     ],
+     "at": 12.8,
+     "activity": 150.3,
+     "text": true
+    },
+    {
+     "box": [
+      1880,
+      834,
+      36,
+      243
+     ],
+     "at": 12.8,
+     "activity": 134.5,
+     "text": false
+    }
+   ]
+  }
+ ]
+}

@@ -1,12 +1,20 @@
 # reelsmith
 
-**Paste a motion-graphics reel. Get it back as code.**
+**Paste any motion-graphics video. Get it back as code: rebuilt 1:1, so you can learn exactly how it was made and tweak every edit.**
 
-reelsmith is a Claude Code plugin that rebuilds Instagram Reels, TikToks and Shorts made of motion graphics (3D-render explainers, kinetic type, UI mockups, paper cut) as editable canvas code. It renders them back out as a 1080×1920 MP4. Change the words, the brand, the colours or the voiceover, then render again.
+reelsmith is a Claude Code plugin that rebuilds Instagram Reels, TikToks, Shorts and promos made of motion graphics as editable code: 3D product shots, UI mockups, kinetic type, camera moves and paper cut. It **measures** the reference, frame by frame:
 
-![Original (left) vs reelsmith rebuild (right)](assets/demo.gif)
+- which easing each move uses, and how long it takes
+- the inertial bounce, springs and motion blur
+- 3D tilts and the camera
+- text animators
+- which beat of the song each move lands on
 
-<sub>Left: the original reel. Right: rendered entirely from code by reelsmith. No footage was copied; every object, logo, caption and camera move is drawn on a canvas.</sub>
+Then it rebuilds the video and scores itself against the original, shot by shot, and loops until they match. Swap in your brand, words and assets, and render.
+
+![Original by @yowerse (left) vs reelsmith rebuild (right)](assets/claude-1to1.gif)
+
+<sub>Left: the original reel by [@yowerse](https://www.instagram.com/yowerse/) ([source](https://www.instagram.com/reel/DdJ2zCVPduR/)). Right: the reelsmith rebuild. The motion was measured, and every shot was matched to the original by score (95.8% similarity on moving pixels). Shown for learning; see [how it was made](plugins/reelsmith/skills/reelsmith/examples/build-with-claude-1to1).</sub>
 
 ```text
 /reelsmith https://www.instagram.com/reel/...
@@ -95,24 +103,35 @@ See [`motion/README.md`](motion/README.md) for the comp format and [`motion/anal
 
 ## Examples
 
-### Build with Claude (new)
+### Build with Claude: 1:1 rebuild (new)
 
-![Build with Claude: original (top) vs reelsmith rebuild (bottom)](assets/claude-demo.gif)
+[`examples/build-with-claude-1to1`](plugins/reelsmith/skills/reelsmith/examples/build-with-claude-1to1) is the GIF at the top. It has eight shots: a camera-tracked chat UI with typing, 3D dashboard cards, a MacBook whip-spin pose-fitted to the reference, and a planet end card drawn from per-frame measurements. The example includes the analysis commands, the measurement scripts and the fix loop.
 
-[`examples/build-with-claude`](plugins/reelsmith/skills/reelsmith/examples/build-with-claude) is a 12.9 s, 16:9 product promo: a spark morphs into the Claude mark, then come a chat UI, flying 3D dashboard cards, a three.js laptop and a planet-sunrise title. Every cut and pop is placed on the song's beats. The motion curves (arrow path, laptop spin, planet drop) were measured frame by frame from the original.
+### Build with Claude: first, hand-built version
+
+![Build with Claude, hand-built: original (top) vs rebuild (bottom)](assets/claude-demo.gif)
+
+[`examples/build-with-claude`](plugins/reelsmith/skills/reelsmith/examples/build-with-claude) is the same reel built by hand before the analyser existed (91% similarity, against 95.8% for the measured rebuild). It is a 12.9 s, 16:9 product promo: a spark morphs into the Claude mark, then come a chat UI, flying 3D dashboard cards, a three.js laptop and a planet-sunrise title. Every cut and pop is placed on the song's beats. The motion curves (arrow path, laptop spin, planet drop) were measured frame by frame from the original.
 
 ### Solana vs Robinhood
 
-[`examples/solana-vs-robinhood`](plugins/reelsmith/skills/reelsmith/examples/solana-vs-robinhood) is a full 10-scene, 23.8 s crypto explainer rebuilt this way (the GIF at the top). It renders in about 40 seconds on a laptop.
+[`examples/solana-vs-robinhood`](plugins/reelsmith/skills/reelsmith/examples/solana-vs-robinhood) is a full 10-scene, 23.8 s crypto explainer rebuilt this way. It renders in about 40 seconds on a laptop.
+
+![Solana vs Robinhood: original (left) vs rebuild (right)](assets/demo.gif)
 
 ## What it can and can't do
 
 - **Can:** motion graphics, 3D-render-style scenes (chrome, glass, neon), kinetic typography, app and UI mockups, chart animations, logo reveals, paper cut and collage, flat vector explainers. It also does real 3D product shots through three.js (like the laptop in the Claude example), music-synced cuts, and both 9:16 and 16:9.
 - **Can't:** live-action footage, real faces or voices, or complex photoreal 3D scenes. Mixed reels get their graphic parts rebuilt, and it tells you which shots need your own footage.
 
-## Fair use
+## Learning, credit and fair use
 
-Use it to learn a style and to make your own content. Don't re-upload someone else's video as yours, and don't strip another creator's watermark or branding. Rebuild with your own brand, words and voice. Brand logos are for identification only.
+reelsmith is for **learning**. Rebuild a video to see exactly how it was animated (eases, timing, camera, beat sync), then make *your own* with your brand, words and voice.
+
+- **Credit the original creator** whenever you show a rebuild. This repo credits @yowerse for the showcase above.
+- **Don't re-upload someone else's video as yours**, and don't strip watermarks or branding.
+- **Rights:** use references you're allowed to study. The examples never ship frames of the original reels; the scripts cut what they need from your own copy.
+- **Assets:** brand logos are for identification only. Third-party assets keep their own licenses (the MacBook model is CC BY 4.0; credit the author).
 
 ## License
 
