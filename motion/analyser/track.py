@@ -22,9 +22,11 @@ def probe(path):
     s = json.loads(subprocess.check_output(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height,r_frame_rate', '-of', 'json', path]))['streams'][0]
     n, d = s['r_frame_rate'].split('/'); return s['width'], s['height'], float(n) / float(d)
 
-def load(path, aw):
+def load(path, aw, t0=None, t1=None):
+    """grey frames at analysis width aw (optionally only t0..t1; frame 0 is then at t0)"""
     W, H, fps = probe(path); aw = min(aw, W); ah = round(H * aw / W / 2) * 2
-    raw = subprocess.check_output(['ffmpeg', '-v', 'error', '-i', path, '-vf', f'scale={aw}:{ah}:flags=area,format=gray', '-f', 'rawvideo', '-'])
+    win = (['-ss', f'{t0:.4f}'] if t0 else []) + ['-i', path] + (['-t', f'{t1 - (t0 or 0):.4f}'] if t1 else [])
+    raw = subprocess.check_output(['ffmpeg', '-v', 'error', *win, '-vf', f'scale={aw}:{ah}:flags=area,format=gray', '-f', 'rawvideo', '-'])
     return np.frombuffer(raw, np.uint8).reshape(-1, ah, aw), fps, W / aw
 
 CRIT = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 80, 1e-5)
@@ -130,13 +132,17 @@ def line_kernel(L, ang):
 
 SHUTTERS = (.25, .5, .75, 1.0)  # fractions of a frame (90°, 180°, 270°, 360°)
 
-def track(F, fps, S, at, box, t_from=None, t_to=None, model='affine', min_cc=0.55, accept=0.75):
+def track(F, fps, S, at, box, t_from=None, t_to=None, model='affine', min_cc=0.55, accept=0.75, own=None):
+    """own: optional boolean mask (box-sized, video px) of exactly this element's pixels — neighbours inside the box are then ignored"""
     n = len(F); i0 = int(round(at * fps)); x, y, w, h = [v / S for v in box]; video_wh = (F.shape[2] * S, F.shape[1] * S)
     xi, yi, wi, hi = int(round(x)), int(round(y)), int(round(w)), int(round(h))
     rest = F[i0].astype(np.float32) / 255; crop = rest[yi:yi + hi, xi:xi + wi].copy(); m0, bgT = element_mask(crop)
     # pad the template with its own background so blurred versions and off-screen entries have room
     P = int(max(wi, hi) * .35) + 8; tmpl = cv2.copyMakeBorder(crop, P, P, P, P, cv2.BORDER_CONSTANT, value=bgT); mask = cv2.copyMakeBorder(m0.astype(np.uint8), P, P, P, P, cv2.BORDER_CONSTANT, value=0) > 0
     tmask = np.zeros(tmpl.shape, np.uint8); tmask[P:P + hi, P:P + wi] = 1  # only the real crop counts, never the padding
+    if own is not None:  # match on this element alone (letters next to letters that move differently)
+        om = cv2.resize(own.astype(np.uint8), (wi, hi), interpolation=cv2.INTER_NEAREST); om = cv2.dilate(om, np.ones((5, 5), np.uint8))
+        tmask[:] = 0; tmask[P:P + hi, P:P + wi] = om; m0 = om > 0; mask = cv2.copyMakeBorder(om, P, P, P, P, cv2.BORDER_CONSTANT, value=0) > 0
     th, tw = tmpl.shape; ys, xs = np.nonzero(mask); EX = np.array([[xs.min(), xs.max(), xs.max(), xs.min()], [ys.min(), ys.min(), ys.max(), ys.max()]], np.float64)  # the element's own extent
     lo = max(0, int(math.ceil((t_from if t_from is not None else 0) * fps))); hi_ = min(n - 1, int((t_to if t_to is not None else 1e9) * fps))
     W0 = Tm(xi - P, yi - P); rows = {}; Hf, Wf = F.shape[1:]

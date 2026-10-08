@@ -1,0 +1,2 @@
+{ "title": "synthetic text animators", "width": 1920, "height": 1080, "fps": 30, "duration": 3.5,
+  "reference": null, "audio": null, "output": "out/synthtext.mp4" }

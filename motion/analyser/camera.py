@@ -43,7 +43,7 @@ def similarity(M):
     out = np.eye(3); out[:2, :2] = s * np.array([[math.cos(th), -math.sin(th)], [math.sin(th), math.cos(th)]]); out[:2, 2] = M[:2, 2]; return out
 
 def camera(F, fps, S, at, t_from, t_to):
-    n = len(F); i0 = int(round(at * fps)); lo, hi = max(0, int(math.ceil(t_from * fps))), min(n - 1, int(t_to * fps) - 1)
+    n = len(F); lo, hi = max(0, int(math.ceil(t_from * fps))), min(n - 1, int(round(t_to * fps)) - 1); i0 = min(max(int(round(at * fps)), lo), hi)  # reference inside the shot
     ref8 = F[i0]; ref = ref8.astype(np.float32) / 255; kp0, des0 = features(ref8); H, W = ref.shape; c = np.array([[W / 2], [H / 2]])
     rows = {}
     for step in (1, -1):
@@ -73,4 +73,4 @@ if __name__ == '__main__':
     a = ap.parse_args(); F, fps, S = load(a.video, a.width); rows = camera(F, fps, S, a.at, a.t_from, a.t_to); os.makedirs(a.out, exist_ok=True)
     W, H = F.shape[2] * S, F.shape[1] * S
     json.dump(dict(name=a.name, kind='camera', video=a.video, fps=fps, model='affine', width=int(W), height=int(H), at=a.at, box=[0, 0, W, H], frames=rows), open(os.path.join(a.out, f'{a.name}.track.json'), 'w'))
-    print(f'{a.name}: {len(rows)} frames ({rows[0]["t"] if rows else "-"}–{rows[-1]["t"] if rows else "-"} s), zoom {min(r["scale_x"] for r in rows):.0f}–{max(r["scale_x"] for r in rows):.0f}%')
+    print(f'{a.name}: {len(rows)} frames ({rows[0]["t"]}–{rows[-1]["t"]} s), zoom {min(r["scale_x"] for r in rows):.0f}–{max(r["scale_x"] for r in rows):.0f}%' if rows else f'{a.name}: could not lock onto the shot')

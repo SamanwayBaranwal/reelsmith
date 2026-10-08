@@ -74,7 +74,7 @@ def nelder_mead(f, x0, step, iters=1500, tol=1e-12):
     i = int(np.argmin(F)); return S[i], F[i]
 
 # ---------------------------------------------------------------- one move
-def fit_move(t, V, wts, v0, v1, lim, fps, tol=.0015):
+def fit_move(t, V, wts, v0, v1, lim, fps, tol=.0015, quick=False):
     """t: times, V: (n, d) values, wts: per-frame confidence; v0/v1: known start/end values or None (solved by least squares)."""
     scale = max(np.ptp(V, axis=0).max(), np.linalg.norm(np.subtract(v1, v0)) if v0 is not None and v1 is not None else 0, 1e-6); W2 = wts[:, None]
     def endpoints(p):
@@ -93,10 +93,12 @@ def fit_move(t, V, wts, v0, v1, lim, fps, tol=.0015):
              (('bnc', None), [[ta, ta + (tb - ta) * k, *EASE[e], .05, 2.5, 6] for e in BOUNCE_EASES for k in (.3, .5)], [dt, dt, .1, .1, .1, .1, .02, .4, 1])]
     plans += [(('bez', e), [[ta, tb]], [dt, dt]) for e in EASE] + [(('spr', e), [[ta, tb]], [dt, dt * 2]) for e in SPRING]
     plans += [(('bnc', e), [[ta, ta + (tb - ta) * k, a, fq, dc] for k in (.3, .5) for a, fq, dc in ((.05, 2.5, 6), (.03, 1.5, 4))], [dt, dt, .02, .4, 1]) for e in BOUNCE_EASES]
+    if quick:  # presets only, short searches: for many small units (text letters) where the shared pattern matters most
+        plans = [(('bez', e), [[ta, tb]], [dt, dt]) for e in EASE] + [(('spr', e), [[ta, tb]], [dt, dt * 2]) for e in SPRING]
     n = float(wts.sum()) * V.shape[1]
     for model, S0, st in plans:
-        f = cost(model); runs = sorted((nelder_mead(f, s0, st, iters=600) for s0 in S0), key=lambda r: r[1])
-        th, c = nelder_mead(f, runs[0][0], st, iters=2000)
+        f = cost(model); runs = sorted((nelder_mead(f, s0, st, iters=200 if quick else 600) for s0 in S0), key=lambda r: r[1])
+        th, c = nelder_mead(f, runs[0][0], st, iters=300 if quick else 2000)
         k = len(th) + (0 if v0 is not None else V.shape[1]) + (0 if v1 is not None else V.shape[1])
         p = progress(model, th, t); a, b = endpoints(p)
         fits.append(dict(model=list(model), th=[float(x) for x in th], rmse=math.sqrt(max(c, 0) / n), aic=n * math.log(c / n + 1e-7) + 2 * k, v0=a.tolist(), v1=b.tolist()))
@@ -152,7 +154,7 @@ def offscreen_point(p, d, half, frame):
         if q[0] + half[0] < 0 or q[0] - half[0] > W or q[1] + half[1] < 0 or q[1] - half[1] > H: return q
     return p
 
-def fit_property(name, t, V, wts, fps, beats, first_full, last_full, anchors=(), frame=None, half=None):
+def fit_property(name, t, V, wts, fps, beats, first_full, last_full, anchors=(), frame=None, half=None, quick=False):
     out = []; sig = noise(V); rest = max(REST[name], 4 * sig)
     def significant(a, b):
         seg = V[a:b + 1]; return max(np.linalg.norm(seg - seg[0], axis=1).max(), np.linalg.norm(seg[-1] - seg[0])) >= max(SIG[name], 6 * sig)
@@ -172,19 +174,23 @@ def fit_property(name, t, V, wts, fps, beats, first_full, last_full, anchors=(),
         if open_start:  # another property of this layer starts confidently near here: in After Effects they'd share the keyframe
             near = [x for x in anchors if lim['t0'][0] - .15 <= x <= lim['t0'][1] + 1e-6]
             if near: x = min(near, key=lambda x: abs(x - t[a])); lim['t0'] = (x - 1e-3, x + 1e-3)
-        tol = max(.0015, ACC[name] / max(span, 1e-6)); cand = [fit_move(t[sl], V[sl], wts[sl], v0, v1, lim, fps, tol)]
+        tol = max(.0015, ACC[name] / max(span, 1e-6)); cand = [fit_move(t[sl], V[sl], wts[sl], v0, v1, lim, fps, tol, quick)]
         # sliding in/out across the edge with too little seen to place the far end: start/end just outside the frame (what designers key)
         if name == 'position' and frame and half is not None and (open_start and fast0 or open_end and fast1):
             far = lambda q: max(-q[0] - half[0], q[0] - half[0] - frame[0], -q[1] - half[1], q[1] - half[1] - frame[1]) > 3 * max(half)
             r0 = min(cand[0][1], key=lambda f: f['rmse']); f0 = open_start and fast0 and far(r0['v0']); f1 = open_end and fast1 and far(r0['v1'])  # judge by the best free fit
             if f0 or f1:
                 cand = [fit_move(t[sl], V[sl], wts[sl], offscreen_point(V[a], V[a] - V[a + 1], half, frame) if f0 else v0,
-                                 offscreen_point(V[b], V[b] - V[b - 1], half, frame) if f1 else v1, lim, fps, tol)]
-        if name in ('scale', 'opacity') and open_start and np.abs(V[a]).max() < .8 * np.abs(V[min(b + 2, len(V) - 1)]).max(): cand.append(fit_move(t[sl], V[sl], wts[sl], np.zeros(V.shape[1]), v1, lim, fps, tol))  # popped/faded in from 0
-        best, fits = cand[-1] if len(cand) > 1 and cand[-1][0]['rmse'] <= cand[0][0]['rmse'] * 1.5 + .002 else cand[0]
+                                 offscreen_point(V[b], V[b] - V[b - 1], half, frame) if f1 else v1, lim, fps, tol, quick)]
+        best, fits = cand[0]
+        # appearing elements: a fade-in starts at 0% (it can't start outside 0–100%); a pop-in may start at 0% scale, but only if that fits as well
+        if open_start and (name == 'opacity' or (name == 'scale' and np.abs(V[a]).max() < .8 * np.abs(V[min(b + 2, len(V) - 1)]).max())):
+            z = fit_move(t[sl], V[sl], wts[sl], np.zeros(V.shape[1]), v1, lim, fps, tol, quick); fv0 = best['v0'][0]
+            if name == 'opacity' and (not 0 <= fv0 <= 100 or z[0]['rmse'] <= best['rmse'] * 2 + .003): best, fits = z
+            if name == 'scale' and (fv0 < 0 or z[0]['rmse'] <= best['rmse'] * 1.1 + .001): best, fits = z
         best['ease_name'] = name_ease(best); best['open'] = dict(start=bool(open_start), end=bool(open_end))
         best['anchored'] = bool(open_start and lim['t0'][1] - lim['t0'][0] < .01)
-        best['confident_start'] = (not open_start) or (name in ('scale', 'opacity') and abs(best['v0'][0]) < 1e-9)
+        best['confident_start'] = (not open_start) or (name == 'opacity' and abs(best['v0'][0]) < 1e-9)  # fading in from 0 is near-certain; popping from 0 is a guess
         best['alternatives'] = sorted([dict(model=f['model'], rmse=round(f['rmse'], 5)) for f in fits], key=lambda f: f['rmse'])[:5]
         if beats: best['beats'] = {k: near_beat(best['th'][i], beats, fps) for k, i in (('start', 0), ('end', 1))}
         out.append(best)
@@ -219,8 +225,10 @@ def describe(prop, m, dim):
     if m['open']['end']: s += ' · leaves while moving (end extrapolated)'
     return s + f"  [fit error {m['rmse'] * 100:.2f}%]"
 
-def fit_track(path, beats):
-    tr = json.load(open(path)); fps = tr['fps']; R = tr['frames']; res = dict(name=tr['name'], fps=fps, layer={}, report=[], moves={})
+def fit_track(path, beats): return fit_data(json.load(open(path)), beats)
+
+def fit_data(tr, beats, quick=False):
+    fps = tr['fps']; R = tr['frames']; res = dict(name=tr['name'], fps=fps, layer={}, report=[], moves={})
     conf = lambda r: float(np.clip((r['cc'] - .6) / .35, .1, 1))
     full = [r for r in R if r.get('visible', 1) >= .98]; pos = [r for r in R if r.get('visible', 1) >= .6]
     first_full = R[0].get('visible', 1) >= .98; last_full = R[-1].get('visible', 1) >= .98
@@ -251,12 +259,14 @@ def fit_track(path, beats):
             props['position'] = alt['position']; props['positionZ'] = alt['positionZ']; del props['scale']; res['depth'] = True
     fitted = {}
     for prop, (rows, V, w) in props.items():
-        if len(rows) >= 4: fitted[prop] = fit_property(prop, np.array([r['t'] for r in rows]), V, np.array(w), fps, beats, first_full, last_full, frame=frame, half=half)
+        if len(rows) >= 4: fitted[prop] = fit_property(prop, np.array([r['t'] for r in rows]), V, np.array(w), fps, beats, first_full, last_full, frame=frame, half=half, quick=quick)
     anchors = sorted({m['th'][0] for ms in fitted.values() for m in ms if m['confident_start']})
     for prop, (rows, V, w) in props.items():
         if len(rows) < 4: continue
         t = np.array([r['t'] for r in rows]); dim = V.shape[1]; moves = fitted[prop]
-        if anchors and any(m['open']['start'] and not m['confident_start'] for m in moves): moves = fit_property(prop, t, V, np.array(w), fps, beats, first_full, last_full, anchors, frame=frame, half=half)
+        if anchors and any(m['open']['start'] and not m['confident_start'] for m in moves):
+            am = fit_property(prop, t, V, np.array(w), fps, beats, first_full, last_full, anchors, frame=frame, half=half, quick=quick)
+            if len(am) == len(moves): moves = [x if x['rmse'] <= y['rmse'] * 1.5 + .002 else y for x, y in zip(am, moves)]  # share the keyframe only if it doesn't fight this property's own data
         if not moves: res['layer'][prop] = r3(np.median(V, axis=0).tolist() if dim > 1 else float(np.median(V))); continue
         k = to_keys(prop, moves, dim)
         if prop == 'scale' and uni: k = to_keys(prop, [dict(m, v0=[m['v0'][0]] * 2, v1=[m['v1'][0]] * 2) for m in moves], 2)
@@ -270,5 +280,6 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser(); ap.add_argument('tracks', nargs='+'); ap.add_argument('--beats'); ap.add_argument('--out', default='analysis')
     a = ap.parse_args(); beats = json.load(open(a.beats))['hits'] if a.beats else None
     for p in a.tracks:
+        if not json.load(open(p))['frames']: print(f'\n■ {p}: nothing was tracked (skipped)'); continue
         res = fit_track(p, beats); os.makedirs(a.out, exist_ok=True); json.dump(res, open(os.path.join(a.out, f"{res['name']}.fit.json"), 'w'), indent=1)
         print(f"\n■ {res['name']}  (visible {res['in']}–{res['out']} s)"); [print('  ' + line) for line in res['report']]
