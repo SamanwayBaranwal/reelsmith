@@ -57,8 +57,9 @@ async function preview(times) {
 function grabRef(t, w, out) { ff(['-ss', String(t), '-i', REF, '-frames:v', '1', '-vf', `scale=${w}:-2`, out]); return out; }
 function grid(inputs, cols, out, w = 300) {
   const rows = Math.ceil(inputs.length / cols), args = [], f = [];
-  inputs.forEach((p, i) => { args.push('-i', p); f.push(`[${i}:v]scale=${w}:${Math.round(w * 16 / 9 / 2) * 2},setsar=1[v${i}]`); });
-  const pad = rows * cols - inputs.length; for (let k = 0; k < pad; k++) { args.push('-f', 'lavfi', '-i', `color=black:s=${w}x${Math.round(w * 16 / 9 / 2) * 2}`); f.push(`[${inputs.length + k}:v]null[v${inputs.length + k}]`); }
+  const th = Math.round(w * (P.height || 1920) / (P.width || 1080) / 2) * 2; // tiles take the project's shape; other shapes are letterboxed
+  inputs.forEach((p, i) => { args.push('-i', p); f.push(`[${i}:v]scale=${w}:${th}:force_original_aspect_ratio=decrease,pad=${w}:${th}:(ow-iw)/2:(oh-ih)/2:color=0x202020,setsar=1[v${i}]`); });
+  const pad = rows * cols - inputs.length; for (let k = 0; k < pad; k++) { args.push('-f', 'lavfi', '-i', `color=black:s=${w}x${th}`); f.push(`[${inputs.length + k}:v]null[v${inputs.length + k}]`); }
   const n = rows * cols; let fc = f.join(';') + ';';
   if (n === 1) fc += '[v0]null[o]'; else fc += Array.from({ length: n }, (_, i) => `[v${i}]`).join('') + `xstack=inputs=${n}:layout=${Array.from({ length: n }, (_, i) => `${(i % cols) ? Array.from({ length: i % cols }, () => 'w0').join('+') : '0'}_${Math.floor(i / cols) ? Array.from({ length: Math.floor(i / cols) }, () => 'h0').join('+') : '0'}`).join('|')}[o]`;
   ff([...args, '-filter_complex', fc, '-map', '[o]', '-frames:v', '1', out]); return out;
@@ -102,7 +103,7 @@ const cmds = {
 
   // exact reference frames side by side, big enough to measure positions (coords × width/360)
   async frames(name, ...ts) {
-    needRef(); mkdir(TMP); mkdir(path.join(ROOT, 'ref'));
+    if (!name || !ts.length) die('usage: node reel.mjs frames <name> 1.0 2.5 ...'); needRef(); mkdir(TMP); mkdir(path.join(ROOT, 'ref'));
     const fs_ = ts.map(t => grabRef(t, 360, path.join(TMP, `f_${tf(t)}.png`)));
     console.log(rel(grid(fs_, Math.min(ts.length, 4), path.join(ROOT, 'ref', `frames_${name}.jpg`), 360)));
   },

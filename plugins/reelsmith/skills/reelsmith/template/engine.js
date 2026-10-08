@@ -115,7 +115,7 @@ function renderFrame(t) {
   if (cap) {
     const a = clamp((t - cap[0]) / (K.fadeIn ?? .08)) * clamp((cap[1] - t) / (K.fadeOut ?? .05));
     ctx.save(); ctx.globalAlpha = a; ctx.font = `${K.weight ?? 500} ${CAPSIZE}px ${K.family || 'Poppins'}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = sc.light ? (K.onLight || '#161616') : (K.onDark || '#FFFFFF'); if (K.shadow && !sc.light) { ctx.shadowColor = K.shadow; ctx.shadowBlur = 16; }
+    const lt = typeof sc.light === 'function' ? sc.light(t) : sc.light; ctx.fillStyle = lt ? (K.onLight || '#161616') : (K.onDark || '#FFFFFF'); if (K.shadow && !lt) { ctx.shadowColor = K.shadow; ctx.shadowBlur = 16; }
     ctx.fillText(cap[2], W / 2, K.y ?? H * .16); ctx.restore();
   }
   if (VIDEO.overlay) { ctx.save(); VIDEO.overlay(ctx, t); ctx.restore(); }

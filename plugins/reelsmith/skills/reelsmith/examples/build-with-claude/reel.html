@@ -1,0 +1,32 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>reelsmith</title>
+<style>
+@font-face{font-family:Poppins;font-weight:400;src:url(node_modules/@fontsource/poppins/files/poppins-latin-400-normal.woff2)}
+@font-face{font-family:Poppins;font-weight:500;src:url(node_modules/@fontsource/poppins/files/poppins-latin-500-normal.woff2)}
+@font-face{font-family:Poppins;font-weight:600;src:url(node_modules/@fontsource/poppins/files/poppins-latin-600-normal.woff2)}
+@font-face{font-family:Poppins;font-weight:700;src:url(node_modules/@fontsource/poppins/files/poppins-latin-700-normal.woff2)}
+@font-face{font-family:"League Gothic";font-weight:400;src:url(node_modules/@fontsource/league-gothic/files/league-gothic-latin-400-normal.woff2)}
+@font-face{font-family:'Source Serif 4';font-weight:400;src:url(node_modules/@fontsource/source-serif-4/files/source-serif-4-latin-400-normal.woff2)}
+@font-face{font-family:'Source Serif 4';font-weight:500;src:url(node_modules/@fontsource/source-serif-4/files/source-serif-4-latin-500-normal.woff2)}
+@font-face{font-family:Inter;font-weight:400;src:url(node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2)}
+@font-face{font-family:Inter;font-weight:500;src:url(node_modules/@fontsource/inter/files/inter-latin-500-normal.woff2)}
+@font-face{font-family:Inter;font-weight:600;src:url(node_modules/@fontsource/inter/files/inter-latin-600-normal.woff2)}
+@font-face{font-family:Inter;font-weight:700;src:url(node_modules/@fontsource/inter/files/inter-latin-700-normal.woff2)}
+@font-face{font-family:'DM Sans';font-weight:700;src:url(node_modules/@fontsource/dm-sans/files/dm-sans-latin-700-normal.woff2)}
+@font-face{font-family:'DM Sans';font-weight:600;src:url(node_modules/@fontsource/dm-sans/files/dm-sans-latin-600-normal.woff2)}
+html,body{margin:0;background:#111}
+canvas{display:block;height:100vh;width:auto;margin:0 auto}
+</style></head>
+<body><canvas id="c"></canvas>
+<script>window.threeP = new Promise(r => window.threeReady = r);</script>
+<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from './node_modules/three/examples/jsm/environments/RoomEnvironment.js';
+import { RoundedBoxGeometry } from './node_modules/three/examples/jsm/geometries/RoundedBoxGeometry.js';
+window.THREE = THREE; window.RoomEnvironment = RoomEnvironment; window.RoundedBoxGeometry = RoundedBoxGeometry; window.threeReady();
+</script>
+
+<script src="engine.js"></script><script src="logos.js"></script><script src="video.js"></script>
+<script>window.ready = boot();</script>
+</body></html>
