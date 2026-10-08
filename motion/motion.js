@@ -200,7 +200,11 @@ function renderLayer(g, L, t, base, sibs, comp) {
   freeBuf(b); g.restore();
 }
 function drawContent(g, L, t, base, sibs, comp) {
-  const M = worldMatrix(L, t, base, sibs); g.setTransform(M);
+  if (L.threeD) return draw3D(g, L, t, base, sibs, comp);
+  const M = worldMatrix(L, t, base, sibs); g.setTransform(M); drawBody(g, L, t, M, comp);
+}
+// the layer's own pixels, in its local space (origin = anchor point space before transforms); M is the current matrix
+function drawBody(g, L, t, M, comp) {
   const P = k => val(L[k], t, L), type = L.type;
   if (type === 'group' || type === 'precomp') { // children live in this layer's space and on its own clock
     const lt = (t - T(L.start ?? 0)) * (L.speed ?? 1); renderLayers(g, L.layers, lt, M, comp); return;
@@ -233,6 +237,79 @@ function drawContent(g, L, t, base, sibs, comp) {
   if (type === 'text') return drawText(g, L, t);
   if (type === 'custom') return L.draw(g, t, L); // escape hatch: any canvas code, already in layer space
   throw new Error(`unknown layer type "${type}" ("${L.name}")`);
+}
+
+// ---------------------------------------------------------------- 3D layers (After Effects' 3D switch)
+// threeD: true → position [x, y, z], rotationX / rotationY / rotation (Z) in degrees, applied X → Y → Z like After Effects,
+// seen through the comp camera: comp.focal px (default: After Effects' 50mm preset, zoom = W/2 / tan(19.8°)).
+// The layer is drawn flat into a buffer, then texture-mapped onto its projected quad (subdivided, so perspective stays correct).
+const AE_HFOV = 39.6;
+const focal = comp => comp.focal || (W / 2) / Math.tan(AE_HFOV / 2 * Math.PI / 180);
+function rotXYZ(x, y, z, rx, ry, rz) {
+  let c = Math.cos(rx), s = Math.sin(rx); [y, z] = [y * c - z * s, y * s + z * c];
+  c = Math.cos(ry); s = Math.sin(ry); [x, z] = [x * c + z * s, -x * s + z * c];
+  c = Math.cos(rz); s = Math.sin(rz); [x, y] = [x * c - y * s, x * s + y * c];
+  return [x, y, z];
+}
+// local layer point (u, v) → comp pixel, or null when behind the camera
+function projector(L, t, comp) {
+  const p = val(L.position, t, L) ?? [W / 2, H / 2, 0], a = v2(val(L.anchor, t, L), [0, 0]), sc = v2(val(L.scale, t, L), [100, 100]), f = focal(comp), D = Math.PI / 180;
+  const rx = (val(L.rotationX, t, L) || 0) * D, ry = (val(L.rotationY, t, L) || 0) * D, rz = (val(L.rotation, t, L) || 0) * D, pz = val(L.positionZ, t, L) ?? p[2] ?? 0; // positionZ = After Effects' separated Z
+  return (u, v) => {
+    const [x, y, z] = rotXYZ((u - a[0]) * sc[0] / 100, (v - a[1]) * sc[1] / 100, 0, rx, ry, rz), Z = z + pz + f;
+    return Z <= 1 ? null : [(x + p[0] - W / 2) * f / Z + W / 2, (y + p[1] - H / 2) * f / Z + H / 2];
+  };
+}
+function bodyBounds(L, t) { // local-space box of the layer's pixels (whole buffer when unknown)
+  const P = k => val(L[k], t, L), pv = v2(P('pivot'), [.5, .5]);
+  if (['rect', 'ellipse', 'solid', 'image'].includes(L.type)) {
+    const s = v2(P('size'), L.type === 'solid' ? [W, H] : L.type === 'image' ? [IMG[L.src].width, IMG[L.src].height] : [100, 100]); const m = (P('strokeWidth') || 0) + 2;
+    return [-s[0] * pv[0] - m, -s[1] * pv[1] - m, s[0] * (1 - pv[0]) + m, s[1] * (1 - pv[1]) + m];
+  }
+  if (L.type === 'path') { const s = P('size') ?? 24; return [-s / 2 - 4, -s / 2 - 4, s / 2 + 4, s / 2 + 4]; }
+  if (L.type === 'text') {
+    const g = (BUF3 || (BUF3 = mk(W * 2, H * 2))).getContext('2d'), size = P('size') ?? 64, lines = String(P('text') ?? '').split('\n'), al = P('align') || 'center';
+    g.font = `${P('weight') ?? 600} ${size}px ${fam(P('font') || 'Inter')}`; const w = Math.max(...lines.map(l => g.measureText(l).width + (P('tracking') ?? 0) * l.length)), h = lines.length * (P('lineHeight') ?? 1.2) * size, m = size * .3;
+    const xa = al === 'center' ? -w / 2 : al === 'right' ? -w : 0; return [xa - m, -h / 2 - m, xa + w + m, h / 2 + m];
+  }
+  if (L.type === 'group' || L.type === 'precomp') { // union of the children's boxes in this layer's space
+    const lt = (t - T(L.start ?? 0)) * (L.speed ?? 1); let b = null;
+    for (const C of L.layers) {
+      if (!active(C, lt)) continue; const [a0, b0, a1, b1] = bodyBounds(C, lt), M = localMatrix(C, lt);
+      for (const [x, y] of [[a0, b0], [a1, b0], [a1, b1], [a0, b1]]) { const q = M.transformPoint(new DOMPoint(x, y)); b = b ? [Math.min(b[0], q.x), Math.min(b[1], q.y), Math.max(b[2], q.x), Math.max(b[3], q.y)] : [q.x, q.y, q.x, q.y]; }
+    }
+    return b || [-1, -1, 1, 1];
+  }
+  return [-W, -H, W, H];
+}
+let BUF3;
+function texTri(c, img, s0, s1, s2, t0, t1, t2) { // draw img's triangle t0-t1-t2 onto screen triangle s0-s1-s2 (affine)
+  const den = t0[0] * (t1[1] - t2[1]) + t1[0] * (t2[1] - t0[1]) + t2[0] * (t0[1] - t1[1]); if (Math.abs(den) < 1e-9) return;
+  const cx = (s0[0] + s1[0] + s2[0]) / 3, cy = (s0[1] + s1[1] + s2[1]) / 3, ex = q => [q[0] + (q[0] - cx) * .015 + Math.sign(q[0] - cx) * .3, q[1] + (q[1] - cy) * .015 + Math.sign(q[1] - cy) * .3];
+  const A = ex(s0), B = ex(s1), C = ex(s2);
+  c.save(); c.beginPath(); c.moveTo(A[0], A[1]); c.lineTo(B[0], B[1]); c.lineTo(C[0], C[1]); c.closePath(); c.clip();
+  const m11 = (s0[0] * (t1[1] - t2[1]) + s1[0] * (t2[1] - t0[1]) + s2[0] * (t0[1] - t1[1])) / den, m12 = (s0[0] * (t2[0] - t1[0]) + s1[0] * (t0[0] - t2[0]) + s2[0] * (t1[0] - t0[0])) / den;
+  const m13 = (s0[0] * (t1[0] * t2[1] - t2[0] * t1[1]) + s1[0] * (t2[0] * t0[1] - t0[0] * t2[1]) + s2[0] * (t0[0] * t1[1] - t1[0] * t0[1])) / den;
+  const m21 = (s0[1] * (t1[1] - t2[1]) + s1[1] * (t2[1] - t0[1]) + s2[1] * (t0[1] - t1[1])) / den, m22 = (s0[1] * (t2[0] - t1[0]) + s1[1] * (t0[0] - t2[0]) + s2[1] * (t1[0] - t0[0])) / den;
+  const m23 = (s0[1] * (t1[0] * t2[1] - t2[0] * t1[1]) + s1[1] * (t2[0] * t0[1] - t0[0] * t2[1]) + s2[1] * (t0[0] * t1[1] - t1[0] * t0[1])) / den;
+  c.transform(m11, m21, m12, m22, m13, m23); c.drawImage(img, 0, 0); c.restore();
+}
+function draw3D(g, L, t, base, sibs, comp) {
+  if (!BUF3) BUF3 = mk(W * 2, H * 2); // local space with origin at the centre, room for content larger than the comp
+  const bg = BUF3.getContext('2d'); bg.setTransform(1, 0, 0, 1, 0, 0); bg.globalAlpha = 1; bg.globalCompositeOperation = 'source-over'; bg.filter = 'none'; bg.clearRect(0, 0, W * 2, H * 2);
+  const M0 = new DOMMatrix().translateSelf(W, H); bg.setTransform(M0); drawBody(bg, L, t, M0, comp);
+  const proj = projector(L, t, comp), [x0, y0, x1, y1] = bodyBounds(L, t);
+  const ext = Math.max(...[[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([u, v]) => proj(u, v)).filter(Boolean).flatMap((q, i, A) => A.map(r => Math.hypot(q[0] - r[0], q[1] - r[1]))), 1);
+  const n = L.subdivide ?? Math.max(6, Math.min(32, Math.ceil(ext / 40))); // ~40 px cells on screen keep the perspective exact to the eye
+  const parentM = L.parent ? worldMatrix(sibs.find(x => x.name === L.parent), t, base, sibs) : base;
+  g.save(); g.setTransform(parentM);
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    const u0 = lerp(x0, x1, i / n), u1 = lerp(x0, x1, (i + 1) / n), v0 = lerp(y0, y1, j / n), v1 = lerp(y0, y1, (j + 1) / n);
+    const a = proj(u0, v0), b = proj(u1, v0), c = proj(u1, v1), d = proj(u0, v1); if (!a || !b || !c || !d) continue;
+    const S = (u, v) => [u + W, v + H];
+    texTri(g, BUF3, a, b, c, S(u0, v0), S(u1, v0), S(u1, v1)); texTri(g, BUF3, a, c, d, S(u0, v0), S(u1, v1), S(u0, v1));
+  }
+  g.restore();
 }
 
 // ---------------------------------------------------------------- text with After Effects-style animators

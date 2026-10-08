@@ -18,7 +18,7 @@ import numpy as np
 EASE = {'linear': [0, 0, 1, 1], 'smooth': [.333, 0, .667, 1], 'out': [.16, 1, .3, 1], 'in': [.7, 0, .84, 0], 'inOut': [.83, 0, .17, 1],
         'whip': [.9, 0, .1, 1], 'back': [.34, 1.56, .64, 1], 'anticipate': [.6, -.35, .7, 1]}
 SPRING = {'pop': (7, 2.2), 'spring': (5, 1.6), 'wobble': (4, 3.2)}
-REST = {'position': .35, 'scale': .12, 'rotation': .08, 'opacity': .6}   # per-frame change below this = at rest
+REST = {'anchor': .35, 'position': .35, 'positionZ': 3, 'scale': .12, 'rotation': .08, 'rotationX': .15, 'rotationY': .15, 'opacity': .6}   # per-frame change below this = at rest
 
 # ---------------------------------------------------------------- curves (same maths as motion.js)
 def bezier(b, u):
@@ -74,7 +74,7 @@ def nelder_mead(f, x0, step, iters=1500, tol=1e-12):
     i = int(np.argmin(F)); return S[i], F[i]
 
 # ---------------------------------------------------------------- one move
-def fit_move(t, V, wts, v0, v1, lim, fps):
+def fit_move(t, V, wts, v0, v1, lim, fps, tol=.0015):
     """t: times, V: (n, d) values, wts: per-frame confidence; v0/v1: known start/end values or None (solved by least squares)."""
     scale = max(np.ptp(V, axis=0).max(), np.linalg.norm(np.subtract(v1, v0)) if v0 is not None and v1 is not None else 0, 1e-6); W2 = wts[:, None]
     def endpoints(p):
@@ -102,7 +102,7 @@ def fit_move(t, V, wts, v0, v1, lim, fps):
         fits.append(dict(model=list(model), th=[float(x) for x in th], rmse=math.sqrt(max(c, 0) / n), aic=n * math.log(c / n + 1e-7) + 2 * k, v0=a.tolist(), v1=b.tolist()))
     fits.sort(key=lambda r: r['aic']); best = fits[0]
     # designers use presets: take the best-fitting preset when it is nearly as good as the best free curve
-    ok = [f for f in fits if f['model'][1] and f['rmse'] <= best['rmse'] * 1.25 + .0015]
+    ok = [f for f in fits if f['model'][1] and f['rmse'] <= best['rmse'] * 1.25 + tol]  # within measurement accuracy, the preset is the answer
     if ok: best = min(ok, key=lambda f: (len(f['th']), f['rmse']))  # simplest preset that explains it (no bounce unless needed)
     return best, fits
 
@@ -117,7 +117,8 @@ def name_ease(m):
     k = min(d, key=d.get); return k if d[k] < .025 else None
 
 # ---------------------------------------------------------------- a property's whole timeline
-SIG = {'position': 4, 'scale': 3, 'rotation': 2, 'opacity': 6}   # smallest change worth calling a move
+SIG = {'anchor': 4, 'position': 4, 'positionZ': 40, 'scale': 3, 'rotation': 2, 'rotationX': 3, 'rotationY': 3, 'opacity': 6}   # smallest change worth calling a move
+ACC = {'anchor': .5, 'position': .5, 'positionZ': 6, 'scale': .3, 'rotation': .15, 'rotationX': .6, 'rotationY': .6, 'opacity': 1.5}   # how accurately each is measured   # smallest change worth calling a move
 def noise(V):
     d2 = np.linalg.norm(np.diff(V, 2, axis=0), axis=1) if len(V) > 3 else np.zeros(1); return 1.4826 * float(np.median(d2)) / math.sqrt(6)
 
@@ -126,9 +127,22 @@ def segments(t, V, rest, fps):
     mv = sp > rest; mv[gap > 1.5] = sp[gap > 1.5] > rest * 3
     idx = np.nonzero(mv)[0]; segs = []
     for i in idx:
-        if segs and i - segs[-1][1] <= 3: segs[-1][1] = i  # bridge the still frame at the top of a bounce
-        else: segs.append([i, i])
-    return [(max(a - 1, 0), min(b, len(t) - 1)) for a, b in segs]
+        if segs and i - segs[-1][1] <= 3:
+            j = segs[-1][1]; d0 = V[j] - V[max(j - 1, 0)]; d1 = V[i] - V[i - 1]; cos = float(d0 @ d1) / max(np.linalg.norm(d0) * np.linalg.norm(d1), 1e-9)
+            if cos < -.3 or i - j <= 1: segs[-1][1] = i; continue  # a reversal is the top of a bounce/overshoot: same move
+        segs.append([i, i])  # a stop with motion carrying on is a new keyframe
+    # inside a continuous move, a deep dip in speed with the motion carrying on is a keyframe between two eases (e.g. smooth → whip)
+    out = []
+    for a, b in segs:
+        cuts = [a]
+        for i in range(a + 1, b):
+            if not (sp[i] <= sp[i - 1] and sp[i] <= sp[i + 1]): continue
+            p0, p1 = sp[cuts[-1]:i].max(initial=0), sp[i + 1:b + 1].max(initial=0)
+            d0 = V[i] - V[max(i - 3, cuts[-1])]; d1 = V[min(i + 3, b)] - V[i]; cos = float(d0 @ d1) / max(np.linalg.norm(d0) * np.linalg.norm(d1), 1e-9)  # direction over a few frames: a reversal is a bounce, not a new key
+            big = 4 * rest  # both sides must be real motion, not the noisy tail of an ease
+            if sp[i] < .2 * min(p0, p1) and min(p0, p1) > big and cos > -.3 and i - cuts[-1] >= 3 and b - i >= 3: cuts.append(i)
+        cuts.append(b); out += [(max(cuts[0] - 1, 0) if k == 0 else cuts[k], min(cuts[k + 1], len(t) - 1)) for k in range(len(cuts) - 1)]  # first piece starts at the rest frame before it
+    return out
 
 def offscreen_point(p, d, half, frame):
     """first point along direction d from p where a box of half-size `half` is fully outside the frame"""
@@ -140,12 +154,16 @@ def offscreen_point(p, d, half, frame):
 
 def fit_property(name, t, V, wts, fps, beats, first_full, last_full, anchors=(), frame=None, half=None):
     out = []; sig = noise(V); rest = max(REST[name], 4 * sig)
-    for a, b in segments(t, V, rest, fps):
+    def significant(a, b):
+        seg = V[a:b + 1]; return max(np.linalg.norm(seg - seg[0], axis=1).max(), np.linalg.norm(seg[-1] - seg[0])) >= max(SIG[name], 6 * sig)
+    segs = [ab for ab in segments(t, V, rest, fps) if significant(*ab)]  # jitter isn't a move (and mustn't cut a real move's window short)
+    for a, b in segs:
         open_start = a == 0 and np.linalg.norm(V[1] - V[0]) > rest; open_end = b == len(t) - 1 and np.linalg.norm(V[-1] - V[-2]) > rest
+        if (open_start or open_end) and b - a < 3: continue  # one or two frames at the edge of tracking: too little to call a move
         seg = V[a:b + 1]; span = max(np.linalg.norm(seg - seg[0], axis=1).max(), np.linalg.norm(seg[-1] - seg[0]))
         if span < max(SIG[name], 6 * sig): continue  # jitter, not a move
-        nxt = [x for x, _ in segments(t, V, rest, fps) if x > b]; tail = min(b + int(.4 * fps), (nxt[0] if nxt else len(t)) - 1, len(t) - 1)
-        settle = min(b + 3, len(t) - 1); sl = slice(a, tail + 1)  # look past the visible stop: an `out` ease's flat tail is still part of the move
+        nxt = [x for x, _ in segs if x >= b]; limit = nxt[0] if nxt else len(t) - 1; tail = min(b + int(.4 * fps), limit)  # never reach into the next move
+        settle = min(b + 3, limit); sl = slice(a, tail + 1)  # look past the visible stop: an `out` ease's flat tail is still part of the move
         v0 = None if open_start else V[max(a - 2, 0):a + 1].mean(0); v1 = None if open_end else V[b:settle + 1].mean(0)
         # an element that is fully in frame when tracking picks it up was born a few frames earlier; one sliding in from the edge may have moved for longer
         fast0 = name == 'position' and np.linalg.norm(V[1] - V[0]) > 15; fast1 = name == 'position' and np.linalg.norm(V[-1] - V[-2]) > 15
@@ -154,15 +172,15 @@ def fit_property(name, t, V, wts, fps, beats, first_full, last_full, anchors=(),
         if open_start:  # another property of this layer starts confidently near here: in After Effects they'd share the keyframe
             near = [x for x in anchors if lim['t0'][0] - .15 <= x <= lim['t0'][1] + 1e-6]
             if near: x = min(near, key=lambda x: abs(x - t[a])); lim['t0'] = (x - 1e-3, x + 1e-3)
-        cand = [fit_move(t[sl], V[sl], wts[sl], v0, v1, lim, fps)]
+        tol = max(.0015, ACC[name] / max(span, 1e-6)); cand = [fit_move(t[sl], V[sl], wts[sl], v0, v1, lim, fps, tol)]
         # sliding in/out across the edge with too little seen to place the far end: start/end just outside the frame (what designers key)
         if name == 'position' and frame and half is not None and (open_start and fast0 or open_end and fast1):
             far = lambda q: max(-q[0] - half[0], q[0] - half[0] - frame[0], -q[1] - half[1], q[1] - half[1] - frame[1]) > 3 * max(half)
-            r0 = cand[0][0]; f0 = open_start and fast0 and far(r0['v0']); f1 = open_end and fast1 and far(r0['v1'])
+            r0 = min(cand[0][1], key=lambda f: f['rmse']); f0 = open_start and fast0 and far(r0['v0']); f1 = open_end and fast1 and far(r0['v1'])  # judge by the best free fit
             if f0 or f1:
                 cand = [fit_move(t[sl], V[sl], wts[sl], offscreen_point(V[a], V[a] - V[a + 1], half, frame) if f0 else v0,
-                                 offscreen_point(V[b], V[b] - V[b - 1], half, frame) if f1 else v1, lim, fps)]
-        if name in ('scale', 'opacity') and open_start: cand.append(fit_move(t[sl], V[sl], wts[sl], np.zeros(V.shape[1]), v1, lim, fps))  # popped/faded in from 0
+                                 offscreen_point(V[b], V[b] - V[b - 1], half, frame) if f1 else v1, lim, fps, tol)]
+        if name in ('scale', 'opacity') and open_start and np.abs(V[a]).max() < .8 * np.abs(V[min(b + 2, len(V) - 1)]).max(): cand.append(fit_move(t[sl], V[sl], wts[sl], np.zeros(V.shape[1]), v1, lim, fps, tol))  # popped/faded in from 0
         best, fits = cand[-1] if len(cand) > 1 and cand[-1][0]['rmse'] <= cand[0][0]['rmse'] * 1.5 + .002 else cand[0]
         best['ease_name'] = name_ease(best); best['open'] = dict(start=bool(open_start), end=bool(open_end))
         best['anchored'] = bool(open_start and lim['t0'][1] - lim['t0'][0] < .01)
@@ -208,11 +226,29 @@ def fit_track(path, beats):
     first_full = R[0].get('visible', 1) >= .98; last_full = R[-1].get('visible', 1) >= .98
     frame = (tr['width'], tr['height']) if 'width' in tr else None; half = np.array(tr['box'][2:4]) / 2
     sx = np.array([r['scale_x'] for r in full]); sy = np.array([r['scale_y'] for r in full]); uni = np.max(np.abs(sx - sy)) < 3
-    op = [r for r in full if r['opacity'] is not None and r['opacity'] <= 108]  # >100% means glow/background confused the reading
+    op = [r for r in full if r['opacity'] is not None and r['opacity'] <= 108 and max(abs(r.get('rotationX', 0)), abs(r.get('rotationY', 0))) < 30]  # >100% = glow/background confusion; steep tilts resample too much to read fades
     props = {'position': (pos, np.array([[r['x'], r['y']] for r in pos]), [conf(r) * float(np.clip(r['scale_x'] / 50, .1, 1)) for r in pos]),
              'scale': (full, sx[:, None] if uni else np.stack([sx, sy], 1), [conf(r) for r in full]),
              'rotation': (full, np.array([[r['rotation']] for r in full]), [conf(r) * float(np.clip(r['scale_x'] / 50, .1, 1)) for r in full]),
              'opacity': (op, np.array([[r['opacity']] for r in op]), [conf(r) for r in op])}
+    if tr.get('kind') == 'camera':  # a camera is read by what it looks at: the world point under the screen centre (After Effects' point of interest)
+        c = np.array([tr['width'] / 2, tr['height'] / 2]); poi = []
+        for r in pos:
+            s_ = r['scale_x'] / 100; a_ = math.radians(r['rotation']); Ri = np.array([[math.cos(a_), math.sin(a_)], [-math.sin(a_), math.cos(a_)]]) / s_
+            poi.append(c + Ri @ (c - np.array([r['x'], r['y']])))
+        props['anchor'] = (pos, np.array(poi), props['position'][2]); del props['position']; del props['opacity']
+    for k in ('rotationX', 'rotationY'):  # 3D layers (track --model 3d)
+        if full and k in full[0]: props[k] = (full, np.array([[r[k]] for r in full]), [conf(r) for r in full])
+    if tr.get('model') == '3d': res['threeD'] = True
+    if tr.get('model') == '3d' and frame:  # moving away in depth and shrinking look alike: also read it as depth (positionZ) and keep the simpler story
+        f = (frame[0] / 2) / math.tan(math.radians(39.6 / 2)); s_ = (sx + sy) / 2 / 100; z = f * (1 / np.clip(s_, 1e-3, None) - 1)
+        P0 = np.array([[(r['x'] - frame[0] / 2) * (f + zz) / f + frame[0] / 2, (r['y'] - frame[1] / 2) * (f + zz) / f + frame[1] / 2] for r, zz in zip(full, z)])
+        alt = {'position': (full, P0, props['position'][2][:0] + [conf(r) for r in full]), 'positionZ': (full, z[:, None], [conf(r) for r in full])}
+        story = lambda ms: sum(len(v) for v in ms.values()) + sum(.5 for v in ms.values() for m in v if not m['model'][1])
+        A_ = {k: fit_property(k, np.array([r['t'] for r in props[k][0]]), props[k][1], np.array(props[k][2]), fps, beats, first_full, last_full, frame=frame, half=half) for k in ('position', 'scale')}
+        B_ = {k: fit_property(k, np.array([r['t'] for r in alt[k][0]]), alt[k][1], np.array(alt[k][2]), fps, beats, first_full, last_full, frame=frame, half=half) for k in ('position', 'positionZ')}
+        if story(B_) < story(A_) and B_['positionZ']:
+            props['position'] = alt['position']; props['positionZ'] = alt['positionZ']; del props['scale']; res['depth'] = True
     fitted = {}
     for prop, (rows, V, w) in props.items():
         if len(rows) >= 4: fitted[prop] = fit_property(prop, np.array([r['t'] for r in rows]), V, np.array(w), fps, beats, first_full, last_full, frame=frame, half=half)

@@ -57,6 +57,7 @@ if __name__ == '__main__':
     # 2. cutouts from each element's rest frame, alpha from its difference to the plate
     layers = []
     for name, tr in tracks.items():
+        if tr.get('kind') == 'camera': continue
         x, y, w, h = [int(round(v)) for v in tr['box']]; rest = grab(a.video, tr['at']).astype(np.float32)
         crop = rest[y:y + h, x:x + w]; bg = plate[y:y + h, x:x + w].astype(np.float32)
         d = np.linalg.norm(crop - bg, axis=2); alpha = np.clip(d / 40.0, 0, 1)
@@ -67,8 +68,14 @@ if __name__ == '__main__':
         moves = f.get('moves', {}); starts = [m['th'][0] for ms in moves.values() for m in ms]; ends = [m['th'][1] for ms in moves.values() for m in ms if m['open']['end']]
         L['in'] = round(min([tr['frames'][0]['t']] + starts), 3); L['out'] = round(max([tr['frames'][-1]['t'] + 1 / fps] + ends), 3)
         if f.get('motion_blur'): L['motionBlur'] = {'shutter': round(f['motion_blur']['shutter'])}
+        if f.get('threeD'): L['threeD'] = True
         layers.append(L)
     comp = dict(background='#000', layers=[dict(name='plate', type='image', src='plate.png', size=[W, H])] + [], motionBlurSamples=16)
+    cams = [n for n, tr in tracks.items() if tr.get('kind') == 'camera']
+    if cams:  # a camera move: the reference frame is the world, the fitted camera flies over it (anchor = world centre)
+        tr = tracks[cams[0]]; f = fits.get(cams[0], {}).get('layer', {}); ref = grab(a.video, tr['at'])
+        cv2.imwrite(os.path.join(out, 'plate.png'), cv2.cvtColor(ref, cv2.COLOR_RGB2BGR)); layers = [L for L in layers if L['name'] not in cams]
+        comp['camera'] = dict(anchor=f.get('anchor', [W / 2, H / 2]), scale=f.get('scale', 100), rotation=f.get('rotation', 0))
     comp['layers'] = layers + comp['layers']  # elements above the plate (top first)
     open(os.path.join(out, 'comp.js'), 'w').write('// written by analyser/rebuild.py from the fitted keyframes\nconst COMP = ' + json.dumps(comp, indent=1) + ';\n')
     dur = len(F) / fps

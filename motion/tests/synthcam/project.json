@@ -1,0 +1,2 @@
+{ "title": "synthetic camera ground truth", "width": 1920, "height": 1080, "fps": 30, "duration": 4,
+  "reference": null, "audio": null, "output": "out/synthcam.mp4" }
