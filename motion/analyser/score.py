@@ -16,7 +16,7 @@ def frames(path, w=480):
     raw = subprocess.check_output(['ffmpeg', '-v', 'error', '-i', path, '-vf', f'scale={w}:{h}:flags=area,gblur=sigma=1', '-pix_fmt', 'rgb24', '-f', 'rawvideo', '-'])
     return np.frombuffer(raw, np.uint8).reshape(-1, h, w, 3).astype(np.float32)
 
-ap = argparse.ArgumentParser(); ap.add_argument('original'); ap.add_argument('rebuild'); ap.add_argument('--fps', type=float, default=30); a = ap.parse_args()
+ap = argparse.ArgumentParser(); ap.add_argument('original'); ap.add_argument('rebuild'); ap.add_argument('--fps', type=float, default=30); ap.add_argument('--shots', help='discover.json: also score each shot'); a = ap.parse_args()
 A, B = frames(a.original), frames(a.rebuild); n = min(len(A), len(B))
 err = np.abs(A[:n] - B[:n]).mean(axis=(1, 2, 3)) / 255 * 100; sim = 100 - err
 # strict: only pixels where something is happening in either video (differs from that video's median frame)
@@ -27,3 +27,7 @@ sim = strict
 worst = np.argsort(sim)[:8]
 for i in sorted(worst): print(f'  {i / a.fps:6.2f}s  {sim[i]:.2f}%')
 json.dump(dict(mean=float(sim.mean()), per_frame=[round(float(x), 3) for x in sim], worst=[dict(t=round(i / a.fps, 3), similarity=round(float(sim[i]), 3)) for i in sorted(worst)]), open('worst.json', 'w'))
+if a.shots:
+    for sh in json.load(open(a.shots))['shots']:
+        i0, i1 = int(round(sh['start'] * a.fps)), min(n, int(round(sh['end'] * a.fps)))
+        if i1 > i0: print(f"  shot {sh['shot']} {sh['start']:5.2f}–{sh['end']:5.2f}s  {sim[i0:i1].mean():6.2f}%  (worst {sim[i0:i1].min():.1f}% at {(i0 + int(np.argmin(sim[i0:i1]))) / a.fps:.2f}s)")

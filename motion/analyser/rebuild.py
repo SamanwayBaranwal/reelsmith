@@ -32,6 +32,30 @@ def poly(r, box, k=1.0):
     pts = [(-w, -h), (w, -h), (w, h), (-w, h)]
     return np.array([[r['x'] + math.cos(a) * x * sx - math.sin(a) * y * sy, r['y'] + math.sin(a) * x * sx + math.cos(a) * y * sy] for x, y in pts])
 
+def raw_layer(tr, fit, camera=False):
+    """keyframes straight from the tracked frames (1:1 motion), with the fitted move filling in before / after what was seen"""
+    R = tr['frames']; lay = dict(fit.get('layer', {})); mv = fit.get('moves', {}); out = {}
+    def edge(prop, vals, conv=lambda v: v):
+        ms = mv.get(prop, []); pre = [[round(ms[0]['th'][0], 4), conv(ms[0]['v0'])]] if ms and ms[0]['open']['start'] and ms[0]['th'][0] < R[0]['t'] - 1e-3 else []
+        post = [[round(ms[-1]['th'][1], 4), conv(ms[-1]['v1'])]] if ms and ms[-1]['open']['end'] and ms[-1]['th'][1] > R[-1]['t'] + 1e-3 else []
+        return pre + vals + post
+    if camera:
+        c = np.array([tr['width'] / 2, tr['height'] / 2]); poi = []
+        for r in R:
+            s_ = r['scale_x'] / 100; a_ = math.radians(r['rotation']); Ri = np.array([[math.cos(a_), math.sin(a_)], [-math.sin(a_), math.cos(a_)]]) / s_
+            q = c + Ri @ (c - np.array([r['x'], r['y']])); poi.append([round(float(q[0]), 2), round(float(q[1]), 2)])
+        out['anchor'] = edge('anchor', [[r['t'], p, 'linear'] for r, p in zip(R, poi)], lambda v: [round(x, 2) for x in v])
+    else:
+        z = 'positionZ' in mv or fit.get('depth')
+        out['position'] = edge('position', [[r['t'], [round(r['x'], 2), round(r['y'], 2)], 'linear'] for r in R], lambda v: [round(x, 2) for x in v]) if not z else lay.get('position')
+        if not z: out['scale'] = edge('scale', [[r['t'], [round(r['scale_x'], 2), round(r['scale_y'], 2)], 'linear'] for r in R], lambda v: [round(v[0], 2), round(v[-1], 2)])
+        op = [[r['t'], round(min(r['opacity'], 100), 1), 'linear'] for r in R if r.get('opacity') is not None]
+        if op and 'opacity' in mv: out['opacity'] = edge('opacity', op, lambda v: round(v[0], 1))
+        for k in ('rotationX', 'rotationY'):
+            if k in R[0]: out[k] = edge(k, [[r['t'], round(r[k], 2), 'linear'] for r in R], lambda v: round(v[0], 2))
+    out['rotation'] = edge('rotation', [[r['t'], round(r['rotation'], 2), 'linear'] for r in R], lambda v: round(v[0], 2))
+    lay.update({k: v for k, v in out.items() if v is not None}); return lay
+
 def plate_for(F, fps, i0, i1, k, covers):
     """per-pixel median of this shot's frames wherever no element covers the pixel (inpainted where never seen)"""
     cov = np.zeros((i1 - i0,) + F.shape[1:3], np.uint8)
@@ -52,7 +76,7 @@ def cutout(out, name, rest, plate_full, box, own=None):
     return f'cutouts/{name}.png', [w, h]
 
 if __name__ == '__main__':
-    ap = argparse.ArgumentParser(); ap.add_argument('video'); ap.add_argument('analysis'); ap.add_argument('--out'); a = ap.parse_args()
+    ap = argparse.ArgumentParser(); ap.add_argument('video'); ap.add_argument('analysis'); ap.add_argument('--out'); ap.add_argument('--raw', action='store_true', help='keyframes = the tracked frames (1:1 motion) instead of fitted eases'); a = ap.parse_args()
     out = a.out or os.path.join(a.analysis, 'rebuild'); os.makedirs(os.path.join(out, 'cutouts'), exist_ok=True)
     tracks = {json.load(open(f))['name']: json.load(open(f)) for f in glob.glob(os.path.join(a.analysis, '*.track.json'))}
     fits = {json.load(open(f))['name']: json.load(open(f)) for f in glob.glob(os.path.join(a.analysis, '*.fit.json'))}
@@ -71,6 +95,7 @@ if __name__ == '__main__':
         if cam:  # the reference frame is the world; the group is the camera flying over it (looking at the fitted point of interest)
             tr = T_[cam]; f = fits.get(cam, {}).get('layer', {}); ref = grab(a.video, tr['at'])
             cv2.imwrite(os.path.join(out, f'plate{j + 1}.png'), cv2.cvtColor(ref, cv2.COLOR_RGB2BGR))
+            if a.raw: f = raw_layer(tr, fits.get(cam, {}), camera=True) | ({'scale': [[r['t'], round(r['scale_x'], 2), 'linear'] for r in tr['frames']]})
             G.update(anchor=f.get('anchor', [W / 2, H / 2]), position=[W / 2, H / 2], scale=f.get('scale', 100), rotation=f.get('rotation', 0))
             G['layers'].append(dict(name=f'plate{j + 1}', type='image', src=f'plate{j + 1}.png', size=[W, H], position=[W / 2, H / 2])); groups.append(G); continue
         covers = []
@@ -87,7 +112,7 @@ if __name__ == '__main__':
         cv2.imwrite(os.path.join(out, f'plate{j + 1}.png'), cv2.cvtColor(plate_full, cv2.COLOR_RGB2BGR)); plate_full = plate_full.astype(np.float32)
         for name, tr in T_.items():
             src, size = cutout(out, name, grab(a.video, tr['at']).astype(np.float32), plate_full, tr['box'])
-            f = fits.get(name, {}); L = dict(name=name, type='image', src=src, size=size, **f.get('layer', {}))
+            f = fits.get(name, {}); L = dict(name=name, type='image', src=src, size=size, **(raw_layer(tr, f) if a.raw else f.get('layer', {})))
             L.setdefault('position', [round(tr['frames'][0]['x'], 1), round(tr['frames'][0]['y'], 1)])
             moves = f.get('moves', {}); starts = [m['th'][0] for ms in moves.values() for m in ms]; ends = [m['th'][1] for ms in moves.values() for m in ms if m['open']['end']]
             L['in'] = round(max(s0, min([tr['frames'][0]['t']] + starts)), 3); L['out'] = round(min(s1, max([tr['frames'][-1]['t'] + 1 / fps] + ends)), 3)
