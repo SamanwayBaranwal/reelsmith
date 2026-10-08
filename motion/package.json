@@ -1,0 +1,17 @@
+{
+  "name": "reelsmith-motion",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "playwright-core install chromium",
+    "make": "node reel.mjs make",
+    "preview": "node reel.mjs preview"
+  },
+  "dependencies": {
+    "@fontsource/dm-sans": "^5.3.0",
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/source-serif-4": "^5.3.0",
+    "playwright-core": "^1.49.0",
+    "three": "^0.186.1"
+  }
+}

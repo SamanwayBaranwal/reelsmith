@@ -1,0 +1,2 @@
+{ "title": "reelsmith motion demo", "width": 1920, "height": 1080, "fps": 30, "duration": 9.3,
+  "reference": null, "audio": null, "output": "out/motion_demo.mp4" }

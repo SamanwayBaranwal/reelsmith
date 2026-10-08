@@ -1,0 +1,8 @@
+node_modules/
+frames/
+preview/
+.tmp/
+out/
+
+assets/demo_audio.wav
+tests/claude/

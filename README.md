@@ -78,6 +78,21 @@ node reel.mjs logo solana              # add a brand mark
 node reel.mjs make                     # render + encode → out/video.mp4
 ```
 
+## reelsmith motion: After Effects for agents (new, in progress)
+
+[`motion/`](motion) is the next engine and has two halves:
+
+- **Engine:** an agent writes a comp as plain data (layers, keyframes, After Effects eases, inertial bounce, springs, text animators, glow, track mattes, precomps, per-layer motion blur, `beat:N` timing) and it renders to MP4.
+- **Analyser (After Effects in reverse):** it watches a video and reports which animation each element uses, how long each move takes, what bounce or spring it has, its motion blur, and which beat it lands on. It then rebuilds the video from that report and scores itself against the original.
+
+![Engine demo, every move on a beat](assets/motion-demo.gif)
+
+![Analyser test: original (left) vs rebuilt automatically from the analysis (right)](assets/analyser-test.gif)
+
+<sub>Left: a test video with known animations. Right: what the analyser rebuilt from its own measurements, scoring 99.3% on moving pixels. It recovered `pop`, `out`, `smooth`, `back`, `inOut` and `whip` with the right timing, plus the inertial bounce and the 180° motion blur.</sub>
+
+See [`motion/README.md`](motion/README.md) for the comp format and [`motion/analyser/README.md`](motion/analyser/README.md) for the analyser.
+
 ## Examples
 
 ### Build with Claude (new)
