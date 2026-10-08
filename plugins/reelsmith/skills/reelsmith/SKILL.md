@@ -69,7 +69,7 @@ Write the scenes in `video.js` (engine API: `references/engine.md`; style recipe
 - Put objects at the measured coordinates; drive camera moves and object paths with `kf(t, [[time, value], ...])` through the sampled positions.
 - Time captions and scene changes to the word timings in `transcript.json`; the reference's captions usually trail the words by 0.05–0.2 s, so confirm with compare.
 - Return a blur radius from a scene during whips, fast zooms and spins (motion blur).
-- Use `<skill>/examples/solana-vs-robinhood/video.js` as the reference for quality and structure: a full 10-scene reel built this way.
+- Use `<skill>/examples/build-with-claude/video.js` as the reference for quality and structure: a full 8-shot reel built this way. `<skill>/examples/build-with-claude-1to1` shows the measured 1:1 version (analyser, per-shot score loop).
 
 ## 5. Compare and fix (the important part)
 

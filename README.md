@@ -113,12 +113,6 @@ See [`motion/README.md`](motion/README.md) for the comp format and [`motion/anal
 
 [`examples/build-with-claude`](plugins/reelsmith/skills/reelsmith/examples/build-with-claude) is the same reel built by hand before the analyser existed (91% similarity, against 95.8% for the measured rebuild). It is a 12.9 s, 16:9 product promo: a spark morphs into the Claude mark, then come a chat UI, flying 3D dashboard cards, a three.js laptop and a planet-sunrise title. Every cut and pop is placed on the song's beats. The motion curves (arrow path, laptop spin, planet drop) were measured frame by frame from the original.
 
-### Solana vs Robinhood
-
-[`examples/solana-vs-robinhood`](plugins/reelsmith/skills/reelsmith/examples/solana-vs-robinhood) is a full 10-scene, 23.8 s crypto explainer rebuilt this way. It renders in about 40 seconds on a laptop.
-
-![Solana vs Robinhood: original (left) vs rebuild (right)](assets/demo.gif)
-
 ## What it can and can't do
 
 - **Can:** motion graphics, 3D-render-style scenes (chrome, glass, neon), kinetic typography, app and UI mockups, chart animations, logo reveals, paper cut and collage, flat vector explainers. It also does real 3D product shots through three.js (like the laptop in the Claude example), music-synced cuts, and both 9:16 and 16:9.
